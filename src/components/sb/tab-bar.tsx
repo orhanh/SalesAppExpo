@@ -8,7 +8,7 @@ import { useColors } from '@/store/salesbell-store';
 
 type TabBarProps = Parameters<NonNullable<ComponentProps<typeof Tabs>['tabBar']>>[0];
 
-/** The design's tab bar: a label under a dot that gets a pill when active. */
+/** The design's tab bar: a label under an icon that gets a pill when active. */
 export function TabBar({ state, descriptors, navigation }: TabBarProps) {
   const c = useColors();
   const insets = useSafeAreaInsets();
@@ -48,7 +48,11 @@ export function TabBar({ state, descriptors, navigation }: TabBarProps) {
                 alignItems: 'center',
                 justifyContent: 'center',
               }}>
-              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: active ? c.ink : c.faint }} />
+              {options.tabBarIcon ? (
+                options.tabBarIcon({ focused: active, color: active ? c.ink : c.mut, size: 20 })
+              ) : (
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: active ? c.ink : c.faint }} />
+              )}
             </View>
             <SBText w={600} size={11} color={active ? c.ink : c.mut} numberOfLines={1}>
               {label}
