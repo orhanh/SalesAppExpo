@@ -49,7 +49,10 @@ export default function HomeScreen() {
 
   const ring = () => {
     if (ringing.current || !p) return;
+    // Short guard against accidental double taps; deliberate repeat rings each count.
     ringing.current = true;
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => (ringing.current = false), 350);
     const before = sold;
     s.playBell();
     setRingKey((k) => k + 1);
@@ -60,14 +63,11 @@ export default function HomeScreen() {
           const after = before + qty;
           if (before < goal && after >= goal) s.toast('Goal reached!', `${after} of ${goal} sales today`);
           else s.toast('Ding! Sale registered', `${p.name} × ${qty}`);
+          setQty(1);
         },
         onError: (e) => s.toast('Sale not registered', errorMessage(e)),
       },
     );
-    timer.current = setTimeout(() => {
-      ringing.current = false;
-      setQty(1);
-    }, 1900);
   };
 
   const stepStyle = {

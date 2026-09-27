@@ -83,9 +83,12 @@ function useSalesBellValue() {
 
   const playBell = () => {
     if (prefs.sound) {
+      // Rewind must finish before play(), or a finished clip stays at its end and stays silent.
       // Web returns promises that reject when autoplay is blocked; a missed ding is fine.
-      Promise.resolve(bell.seekTo(0)).catch(() => {});
-      Promise.resolve(bell.play() as unknown).catch(() => {});
+      bell
+        .seekTo(0)
+        .then(() => bell.play() as unknown)
+        .catch(() => {});
     }
     if (Platform.OS !== 'web') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
