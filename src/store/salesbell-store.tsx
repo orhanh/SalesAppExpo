@@ -17,7 +17,9 @@ import { queryClient, useProfile } from '@/lib/api';
 import { authStorage } from '@/lib/auth-storage';
 import { supabase } from '@/lib/supabase';
 
-type Toast = { id: number; title: string; sub: string };
+type ToastAction = { label: string; onPress: () => void };
+type ToastOptions = { action?: ToastAction; duration?: number };
+type Toast = { id: number; title: string; sub: string; action?: ToastAction };
 type Prefs = { dark: boolean | null; sound: boolean; notif: boolean };
 
 const PREFS_KEY = 'salesbell.prefs';
@@ -75,10 +77,15 @@ function useSalesBellValue() {
       return next;
     });
 
-  const toast = (title: string, sub = '') => {
+  const toast = (title: string, sub = '', { action, duration = 2200 }: ToastOptions = {}) => {
     clearTimeout(toastTimer.current);
-    setToastMsg({ id: Date.now(), title, sub });
-    toastTimer.current = setTimeout(() => setToastMsg(null), 2200);
+    setToastMsg({ id: Date.now(), title, sub, action });
+    toastTimer.current = setTimeout(() => setToastMsg(null), duration);
+  };
+
+  const dismissToast = () => {
+    clearTimeout(toastTimer.current);
+    setToastMsg(null);
   };
 
   const playBell = () => {
@@ -92,6 +99,12 @@ function useSalesBellValue() {
     }
     if (Platform.OS !== 'web') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  };
+
+  const failBuzz = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
   };
 
@@ -114,7 +127,9 @@ function useSalesBellValue() {
     setNotif: (v: boolean) => setPref('notif', v),
     toastMsg,
     toast,
+    dismissToast,
     playBell,
+    failBuzz,
     signOut: () => supabase.auth.signOut(),
   };
 }

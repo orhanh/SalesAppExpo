@@ -109,6 +109,7 @@ export type Database = {
           created_at: string
           id: number
           kind: string
+          sale_id: number | null
           sub: string
           text: string
           user_id: string
@@ -117,6 +118,7 @@ export type Database = {
           created_at?: string
           id?: never
           kind: string
+          sale_id?: number | null
           sub?: string
           text: string
           user_id: string
@@ -125,11 +127,19 @@ export type Database = {
           created_at?: string
           id?: never
           kind?: string
+          sale_id?: number | null
           sub?: string
           text?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "feed_events_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "feed_events_user_id_fkey"
             columns: ["user_id"]
@@ -421,6 +431,7 @@ export type Database = {
           won: boolean
         }[]
       }
+      undo_sale: { Args: { p_sale_id: number }; Returns: undefined }
     }
     Enums: {
       [_ in never]: never

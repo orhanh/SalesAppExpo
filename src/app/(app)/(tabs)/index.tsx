@@ -1,11 +1,12 @@
 import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { BellIcon } from '@/components/sb/bell-icon';
 import { SpinGlyph } from '@/components/sb/spin-wheel';
 import { Avatar, Card, Notice, SBText, Screen } from '@/components/sb/ui';
-import { useLeaderboard, useProducts, useRingSale, useSettings, useSpinStatus } from '@/lib/api';
+import { useLeaderboard, useProducts, useRingSale, useSettings, useSpinStatus, useUndoSale } from '@/lib/api';
+import type { Tables } from '@/lib/database.types';
 import { firstName, fmt, ptsLabel, spinsLabel } from '@/lib/salesbell';
 import { errorMessage } from '@/lib/supabase';
 import { useSalesBell } from '@/store/salesbell-store';
@@ -23,14 +24,12 @@ export default function HomeScreen() {
   const today = useLeaderboard('d');
   const spin = useSpinStatus();
   const ringSale = useRingSale();
+  const undoSale = useUndoSale();
 
   const [selId, setSelId] = useState<number | null>(null);
   const [qty, setQty] = useState(1);
   const [ringKey, setRingKey] = useState(0);
   const ringing = useRef(false);
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  useEffect(() => () => clearTimeout(timer.current), []);
 
   const visible = (products.data ?? []).filter((p) => p.visible);
   // Keep the selection on a visible product if an admin hides or removes it.
@@ -47,25 +46,46 @@ export default function HomeScreen() {
   const every = spin.data?.spin_every ?? settings.data?.spin_every ?? 5;
   const need = every - (sold % every);
 
-  const ring = () => {
-    if (ringing.current || !p) return;
-    // Short guard against accidental double taps; deliberate repeat rings each count.
+  const undo = (saleId: number, label: string) =>
+    undoSale.mutate(saleId, {
+      onSuccess: () => s.toast('Sale undone', label),
+      onError: (e) => {
+        s.failBuzz();
+        s.toast("Couldn't undo", errorMessage(e), { duration: 5000 });
+      },
+    });
+
+  // The ding only plays once the server has saved the sale, so it always means "it counted".
+  // One sale at a time: the bell stays locked until the server answers.
+  const ring = (product: Tables<'products'> | undefined = p, n = qty) => {
+    if (ringing.current || !product) return;
     ringing.current = true;
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => (ringing.current = false), 350);
     const before = sold;
-    s.playBell();
-    setRingKey((k) => k + 1);
+    const label = `${product.name} × ${n}`;
     ringSale.mutate(
-      { productId: p.id, qty },
+      { productId: product.id, qty: n },
       {
-        onSuccess: () => {
-          const after = before + qty;
-          if (before < goal && after >= goal) s.toast('Goal reached!', `${after} of ${goal} sales today`);
-          else s.toast('Ding! Sale registered', `${p.name} × ${qty}`);
+        onSuccess: (sale) => {
+          s.playBell();
+          setRingKey((k) => k + 1);
           setQty(1);
+          const after = before + n;
+          const reached = before < goal && after >= goal;
+          s.toast(reached ? 'Goal reached!' : 'Ding! Sale registered', reached ? `${label} · ${after} of ${goal} today` : label, {
+            duration: 5000,
+            action: { label: 'Undo', onPress: () => undo(sale.id, label) },
+          });
         },
-        onError: (e) => s.toast('Sale not registered', errorMessage(e)),
+        onError: (e) => {
+          s.failBuzz();
+          s.toast('Sale not registered', errorMessage(e), {
+            duration: 8000,
+            action: { label: 'Retry', onPress: () => ring(product, n) },
+          });
+        },
+        onSettled: () => {
+          ringing.current = false;
+        },
       },
     );
   };
@@ -212,8 +232,8 @@ export default function HomeScreen() {
         </View>
 
         <Pressable
-          onPress={ring}
-          disabled={!p}
+          onPress={() => ring()}
+          disabled={!p || ringSale.isPending}
           accessibilityRole="button"
           accessibilityLabel="Ring the bell"
           style={({ pressed }) => ({
@@ -224,13 +244,13 @@ export default function HomeScreen() {
             alignItems: 'center',
             justifyContent: 'center',
             gap: 10,
-            opacity: p ? 1 : 0.5,
+            opacity: !p ? 0.5 : ringSale.isPending ? 0.75 : 1,
             boxShadow: c.bellShadow,
             transform: [{ scale: pressed ? 0.96 : 1 }],
           })}>
           <BellIcon color={c.accInk} ringKey={ringKey} />
           <SBText w={800} size={18} color={c.accInk}>
-            Ring the bell
+            {ringSale.isPending ? 'Ringing…' : 'Ring the bell'}
           </SBText>
         </Pressable>
 

@@ -242,6 +242,15 @@ export function useRingSale() {
   });
 }
 
+/** Takes back a just-rung sale; the server allows it for 15 seconds, no admin needed. */
+export function useUndoSale() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (saleId: number) => must(supabase.rpc('undo_sale', { p_sale_id: saleId })),
+    onSettled: () => invalidateSales(client),
+  });
+}
+
 export function useRequestCancel() {
   const client = useQueryClient();
   return useMutation({

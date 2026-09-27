@@ -1,4 +1,4 @@
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import Animated, { FadeOut, Keyframe } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -11,11 +11,11 @@ const enter = new Keyframe({
 }).duration(350);
 
 export function Toast() {
-  const { toastMsg, c } = useSalesBell();
+  const { toastMsg, dismissToast, c } = useSalesBell();
   const insets = useSafeAreaInsets();
   if (!toastMsg) return null;
   return (
-    <View pointerEvents="none" style={{ position: 'absolute', top: insets.top + 4, left: 16, right: 16, zIndex: 20 }}>
+    <View pointerEvents="box-none" style={{ position: 'absolute', top: insets.top + 4, left: 16, right: 16, zIndex: 20 }}>
       <Animated.View
         key={toastMsg.id}
         entering={enter}
@@ -31,12 +31,39 @@ export function Toast() {
           gap: 12,
           boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
         }}>
-        <SBText w={800} size={17} color={c.toastInk} style={{ flexShrink: 1 }}>
-          {toastMsg.title}
-        </SBText>
-        <SBText w={500} size={14} color={c.toastInk} style={{ opacity: 0.75, textAlign: 'right', flexShrink: 1 }}>
-          {toastMsg.sub}
-        </SBText>
+        {toastMsg.action ? (
+          // With an action button the sub line moves under the title to make room.
+          <View style={{ flexShrink: 1, gap: 2 }}>
+            <SBText w={800} size={17} color={c.toastInk}>
+              {toastMsg.title}
+            </SBText>
+            <SBText w={500} size={14} color={c.toastInk} style={{ opacity: 0.75 }}>
+              {toastMsg.sub}
+            </SBText>
+          </View>
+        ) : (
+          <SBText w={800} size={17} color={c.toastInk} style={{ flexShrink: 1 }}>
+            {toastMsg.title}
+          </SBText>
+        )}
+        {toastMsg.action ? (
+          <Pressable
+            onPress={() => {
+              toastMsg.action!.onPress();
+              dismissToast();
+            }}
+            hitSlop={12}
+            accessibilityRole="button"
+            style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10, backgroundColor: c.acc }}>
+            <SBText w={800} size={15} color={c.accInk}>
+              {toastMsg.action.label}
+            </SBText>
+          </Pressable>
+        ) : (
+          <SBText w={500} size={14} color={c.toastInk} style={{ opacity: 0.75, textAlign: 'right', flexShrink: 1 }}>
+            {toastMsg.sub}
+          </SBText>
+        )}
       </Animated.View>
     </View>
   );
