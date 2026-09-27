@@ -1,6 +1,7 @@
 import { View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
+import { GroupScope, useGroupScope } from '@/components/sb/group-scope';
 import { Avatar, Notice, SBText, Screen } from '@/components/sb/ui';
 import { FEED_DOTS } from '@/constants/theme';
 import { useFeed } from '@/lib/api';
@@ -11,7 +12,8 @@ const KIND_LABEL = { bell: 'Sale', goal: 'Milestone', lead: 'Contest', spin: 'Sp
 
 export default function FeedScreen() {
   const { c, userId } = useSalesBell();
-  const feed = useFeed();
+  const scope = useGroupScope();
+  const feed = useFeed(scope.memberIds);
   return (
     <Screen gap={10}>
       <View style={{ gap: 2, marginBottom: 4 }}>
@@ -19,13 +21,16 @@ export default function FeedScreen() {
           Feed
         </SBText>
         <SBText size={14} color={c.mut}>
-          Live from the sales floor
+          {scope.group ? `Live from ${scope.group.name}` : 'Live from your team'}
         </SBText>
       </View>
+      <GroupScope groups={scope.groups} group={scope.group} onChange={scope.setGroup} />
       {feed.isError ? (
         <Notice onRetry={() => feed.refetch()}>Couldn&apos;t load the feed.</Notice>
       ) : feed.isPending ? null : feed.data.length === 0 ? (
-        <Notice>Nothing yet today. Ring the bell to get things going!</Notice>
+        <Notice>
+          {scope.group ? 'Nothing from this group yet.' : 'Nothing yet today. Ring the bell to get things going!'}
+        </Notice>
       ) : (
         feed.data.map((f) => {
           const name = f.profile?.full_name ?? 'Someone';

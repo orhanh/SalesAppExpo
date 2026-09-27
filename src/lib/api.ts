@@ -45,15 +45,63 @@ export function useProfile(userId: string | undefined) {
     queryKey: ['profile', userId],
     enabled: !!userId,
     queryFn: () =>
-      must(supabase.from('profiles').select('*, team:teams(name)').eq('id', userId!).single()) as Promise<Profile>,
+      must(supabase.from('profiles').select('*, team:teams!profiles_team_id_fkey(name)').eq('id', userId!).single()) as Promise<Profile>,
   });
 }
 
-export function useTeams() {
+export type MyTeam = { id: number; name: string; code: string; created_by: string; members: number };
+
+/** The current user's team, including its join code (only members can see it). */
+export function useMyTeam(userId: string | undefined) {
   return useQuery({
-    queryKey: ['teams'],
-    staleTime: Infinity,
-    queryFn: () => must(supabase.from('teams').select('*').order('id')),
+    queryKey: ['myTeam', userId],
+    enabled: !!userId,
+    queryFn: async () => ((await must(supabase.rpc('my_team')))[0] ?? null) as MyTeam | null,
+  });
+}
+
+/** Which team a join code belongs to. Works before sign-up. */
+export function useTeamPreview(code: string) {
+  const clean = code.trim().toUpperCase();
+  return useQuery({
+    queryKey: ['teamPreview', clean],
+    enabled: clean.length === 6,
+    staleTime: 60_000,
+    queryFn: async () => (await must(supabase.rpc('team_preview', { p_code: clean })))[0] ?? null,
+  });
+}
+
+export async function teamNameTaken(name: string) {
+  return must(supabase.rpc('team_name_taken', { p_name: name.trim() }));
+}
+
+function invalidateTeams(client: QueryClient) {
+  return Promise.all(
+    [['profile'], ['myTeam'], ['profiles'], ['leaderboard']].map((queryKey) => client.invalidateQueries({ queryKey })),
+  );
+}
+
+export function useJoinTeam() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (code: string) => must(supabase.rpc('join_team', { p_code: code.trim().toUpperCase() })),
+    onSettled: () => invalidateTeams(client),
+  });
+}
+
+export function useCreateTeam() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (name: string) => (await must(supabase.rpc('create_team', { p_name: name.trim() })))[0],
+    onSettled: () => invalidateTeams(client),
+  });
+}
+
+export function useRegenerateTeamCode() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => must(supabase.rpc('regenerate_team_code')),
+    onSettled: () => invalidateTeams(client),
   });
 }
 
@@ -67,14 +115,16 @@ export function useSettings() {
 export function useProducts() {
   return useQuery({
     queryKey: ['products'],
-    queryFn: () => must(supabase.from('products').select('*').order('id')),
+    // Deleted products that had sales are kept (archived) for history, but never listed.
+    queryFn: () => must(supabase.from('products').select('*').is('deleted_at', null).order('id')),
   });
 }
 
-export function useLeaderboard(period: Period) {
+/** Company-wide, or only the members of one sales group. */
+export function useLeaderboard(period: Period, groupId?: number | null) {
   return useQuery({
-    queryKey: ['leaderboard', period],
-    queryFn: () => must(supabase.rpc('leaderboard', { p_period: period })),
+    queryKey: ['leaderboard', period, groupId ?? null],
+    queryFn: () => must(supabase.rpc('leaderboard', { p_period: period, p_group_id: groupId ?? undefined })),
   });
 }
 
@@ -101,17 +151,48 @@ export function useStandings() {
 
 export type FeedItem = Tables<'feed_events'> & { kind: FeedKind; profile: { full_name: string } | null };
 
-export function useFeed() {
+/** The latest feed events, optionally only those by the given people (a group's members). */
+export function useFeed(userIds?: string[]) {
   return useQuery({
-    queryKey: ['feed'],
-    queryFn: () =>
-      must(
-        supabase
-          .from('feed_events')
-          .select('*, profile:profiles(full_name)')
-          .order('created_at', { ascending: false })
-          .limit(50),
-      ) as Promise<FeedItem[]>,
+    queryKey: ['feed', userIds ?? null],
+    queryFn: () => {
+      let q = supabase.from('feed_events').select('*, profile:profiles(full_name)');
+      if (userIds) q = q.in('user_id', userIds);
+      return must(q.order('created_at', { ascending: false }).limit(50)) as Promise<FeedItem[]>;
+    },
+  });
+}
+
+export type LatestSale = {
+  id: number;
+  created_at: string;
+  sub: string;
+  user_id: string;
+  profile: { full_name: string; team_id: number | null };
+  sale: { qty: number; unit_price: number } | null;
+};
+
+/** The team's most recent sale today, or null. Refreshed live with the feed. */
+export function useLatestSale(teamId: number | null | undefined) {
+  return useQuery({
+    queryKey: ['feed', 'latest', teamId],
+    enabled: !!teamId,
+    queryFn: async () => {
+      const midnight = new Date();
+      midnight.setHours(0, 0, 0, 0);
+      const { data, error } = await supabase
+        .from('feed_events')
+        .select('id, created_at, sub, user_id, profile:profiles!inner(full_name, team_id), sale:sales(qty, unit_price)')
+        .eq('kind', 'bell')
+        // RLS already limits sellers to their team; admins can read every team, so filter explicitly.
+        .eq('profile.team_id', teamId!)
+        .gte('created_at', midnight.toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data as LatestSale | null;
+    },
   });
 }
 
@@ -190,7 +271,7 @@ export function useProfiles() {
   return useQuery({
     queryKey: ['profiles'],
     queryFn: () =>
-      must(supabase.from('profiles').select('*, team:teams(name)').order('created_at')) as Promise<Profile[]>,
+      must(supabase.from('profiles').select('*, team:teams!profiles_team_id_fkey(name)').order('created_at')) as Promise<Profile[]>,
   });
 }
 
@@ -298,6 +379,20 @@ export function useSaveProduct() {
   });
 }
 
+/** Deletes a product, or archives it if it has sales or is used by a contest. */
+export function useDeleteProduct() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) =>
+      (await must(supabase.rpc('delete_product', { p_product_id: id }))) as 'deleted' | 'archived',
+    onSettled: () => {
+      client.invalidateQueries({ queryKey: ['products'] });
+      client.invalidateQueries({ queryKey: ['productSales'] });
+      client.invalidateQueries({ queryKey: ['audit'] });
+    },
+  });
+}
+
 export function useSetUserActive() {
   const client = useQueryClient();
   return useMutation({
@@ -341,6 +436,21 @@ export function useSpin() {
   });
 }
 
+/** Turns Spin to Win on or off for everyone. */
+export function useSetSpinEnabled() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      must(supabase.from('settings').update({ spin_enabled: enabled }).eq('id', true).select()),
+    onMutate: (enabled) =>
+      client.setQueryData<Tables<'settings'>>(['settings'], (s) => (s ? { ...s, spin_enabled: enabled } : s)),
+    onSettled: () => {
+      client.invalidateQueries({ queryKey: ['settings'] });
+      client.invalidateQueries({ queryKey: ['audit'] });
+    },
+  });
+}
+
 export function useSetSpinEvery() {
   const client = useQueryClient();
   return useMutation({
@@ -371,3 +481,131 @@ export function useSetProbability() {
     },
   });
 }
+
+// ---------------------------------------------------------------------------
+// Sales groups
+// ---------------------------------------------------------------------------
+
+export type GroupMember = Tables<'group_members'> & { profile: { full_name: string; active: boolean } | null };
+export type Group = Tables<'groups'> & { members: GroupMember[] };
+export type GroupInvite = Tables<'group_invites'> & {
+  group: { name: string } | null;
+  inviter: { full_name: string } | null;
+};
+
+const GROUP_SELECT = '*, members:group_members(*, profile:profiles(full_name, active))';
+
+/** Groups the current user belongs to, with their members. */
+export function useMyGroups(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['groups', 'mine', userId],
+    enabled: !!userId,
+    queryFn: async () => {
+      const mine = await must(supabase.from('group_members').select('group_id').eq('user_id', userId!));
+      if (!mine.length) return [] as Group[];
+      return must(
+        supabase
+          .from('groups')
+          .select(GROUP_SELECT)
+          .in('id', mine.map((m) => m.group_id))
+          .order('name'),
+      ) as Promise<Group[]>;
+    },
+  });
+}
+
+export function useGroup(id: number | null) {
+  return useQuery({
+    queryKey: ['groups', 'one', id],
+    enabled: id !== null,
+    queryFn: () => must(supabase.from('groups').select(GROUP_SELECT).eq('id', id!).single()) as Promise<Group>,
+  });
+}
+
+/** Invites waiting for the current user to accept or decline. */
+export function useMyInvites(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['invites', 'mine', userId],
+    enabled: !!userId,
+    queryFn: () =>
+      must(
+        supabase
+          .from('group_invites')
+          .select('*, group:groups(name), inviter:profiles!group_invites_invited_by_fkey(full_name)')
+          .eq('invitee_id', userId!)
+          .order('created_at', { ascending: false }),
+      ) as Promise<GroupInvite[]>,
+  });
+}
+
+/** Invites a group's owner has sent that haven't been answered yet. */
+export function useGroupInvites(groupId: number | null) {
+  return useQuery({
+    queryKey: ['invites', 'group', groupId],
+    enabled: groupId !== null,
+    queryFn: () =>
+      must(
+        supabase
+          .from('group_invites')
+          .select('*, invitee:profiles!group_invites_invitee_id_fkey(full_name, email)')
+          .eq('group_id', groupId!),
+      ) as Promise<(Tables<'group_invites'> & { invitee: { full_name: string; email: string } | null })[]>,
+  });
+}
+
+export function invalidateGroups(client: QueryClient = queryClient) {
+  return Promise.all([
+    client.invalidateQueries({ queryKey: ['groups'] }),
+    client.invalidateQueries({ queryKey: ['invites'] }),
+    client.invalidateQueries({ queryKey: ['leaderboard'] }),
+    client.invalidateQueries({ queryKey: ['feed'] }),
+  ]);
+}
+
+function useGroupMutation<V, R>(fn: (v: V) => Promise<R>) {
+  const client = useQueryClient();
+  return useMutation({ mutationFn: fn, onSettled: () => invalidateGroups(client) });
+}
+
+export const useCreateGroup = () =>
+  useGroupMutation((name: string) => must(supabase.rpc('create_group', { p_name: name })));
+
+export const useRenameGroup = () =>
+  useGroupMutation((v: { groupId: number; name: string }) =>
+    must(supabase.rpc('rename_group', { p_group_id: v.groupId, p_name: v.name })),
+  );
+
+export const useDeleteGroup = () =>
+  useGroupMutation((groupId: number) => must(supabase.rpc('delete_group', { p_group_id: groupId })));
+
+export const useLeaveGroup = () =>
+  useGroupMutation((groupId: number) => must(supabase.rpc('leave_group', { p_group_id: groupId })));
+
+export const useRemoveMember = () =>
+  useGroupMutation((v: { groupId: number; userId: string }) =>
+    must(supabase.rpc('remove_member', { p_group_id: v.groupId, p_user_id: v.userId })),
+  );
+
+export const useInviteToGroup = () =>
+  useGroupMutation((v: { groupId: number; userId: string }) =>
+    must(supabase.rpc('invite_to_group', { p_group_id: v.groupId, p_user_id: v.userId })),
+  );
+
+export const useRespondToInvite = () =>
+  useGroupMutation((v: { inviteId: number; accept: boolean }) =>
+    must(supabase.rpc('respond_to_invite', { p_invite_id: v.inviteId, p_accept: v.accept })),
+  );
+
+/** Invites by email; people without an account get a sign-up email from Supabase Auth. */
+export const useInviteByEmail = () =>
+  useGroupMutation(async (v: { groupId: number; email: string; redirectTo: string }) => {
+    const { data, error } = await supabase.functions.invoke<{ status: 'invited' | 'emailed' }>('invite-to-group', {
+      body: v,
+    });
+    if (error) {
+      // Non-2xx responses carry the reason in the JSON body.
+      const body = await (error as { context?: Response }).context?.json?.().catch(() => null);
+      throw new Error(body?.error ?? error.message);
+    }
+    return data!.status;
+  });

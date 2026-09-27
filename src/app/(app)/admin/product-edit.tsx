@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { Button, ErrorText, Field, SBText, SheetBody, Toggle } from '@/components/sb/ui';
-import { useProducts, useSaveProduct } from '@/lib/api';
+import { useDeleteProduct, useProducts, useSaveProduct } from '@/lib/api';
 import { errorMessage } from '@/lib/supabase';
 import { useSalesBell } from '@/store/salesbell-store';
 
@@ -12,6 +12,9 @@ export default function ProductEditSheet() {
   const params = useLocalSearchParams<{ id?: string }>();
   const existing = useProducts().data?.find((p) => String(p.id) === params.id) ?? null;
   const save = useSaveProduct();
+  const del = useDeleteProduct();
+  // Deleting needs a second tap.
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const [name, setName] = useState(existing?.name ?? '');
   const [price, setPrice] = useState(existing ? String(existing.price) : '');
@@ -48,6 +51,21 @@ export default function ProductEditSheet() {
     );
   };
 
+  const remove = () => {
+    if (!existing) return;
+    if (!confirmDelete) return setConfirmDelete(true);
+    del.mutate(existing.id, {
+      onSuccess: (r) => {
+        toast('Product deleted', r === 'archived' ? `${existing.name} stays in sales history` : existing.name);
+        router.back();
+      },
+      onError: (e) => {
+        setConfirmDelete(false);
+        setErr(errorMessage(e));
+      },
+    });
+  };
+
   return (
     <ScrollView keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets style={{ backgroundColor: c.bg }}>
       <SheetBody bg={c.bg}>
@@ -77,6 +95,18 @@ export default function ProductEditSheet() {
             Cancel
           </Button>
         </View>
+        {existing ? (
+          <View style={{ gap: 6 }}>
+            <Button tone={confirmDelete ? 'warn' : 'outline'} height={48} onPress={remove} loading={del.isPending}>
+              {confirmDelete ? 'Tap again to delete' : 'Delete product'}
+            </Button>
+            {confirmDelete ? (
+              <SBText size={13} color={c.mut} style={{ textAlign: 'center' }} lh={1.4}>
+                Sellers can no longer ring it up. Past sales keep counting in history and leaderboards.
+              </SBText>
+            ) : null}
+          </View>
+        ) : null}
       </SheetBody>
     </ScrollView>
   );

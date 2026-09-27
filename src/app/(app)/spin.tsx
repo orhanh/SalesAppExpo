@@ -5,7 +5,7 @@ import Animated, { Keyframe } from 'react-native-reanimated';
 
 import { SPIN_MS, SpinWheel, targetDegrees } from '@/components/sb/spin-wheel';
 import { BackLink, ListCard, ListRow, Notice, SBText, Screen, SectionLabel, Title } from '@/components/sb/ui';
-import { usePrizes, useSpin, useSpinFields, useSpinStatus } from '@/lib/api';
+import { usePrizes, useSettings, useSpin, useSpinFields, useSpinStatus } from '@/lib/api';
 import { relativeDay, spinsLabel } from '@/lib/salesbell';
 import { errorMessage } from '@/lib/supabase';
 import { useSalesBell } from '@/store/salesbell-store';
@@ -23,6 +23,7 @@ export default function SpinScreen() {
   const status = useSpinStatus();
   const prizes = usePrizes(userId);
   const spinWheel = useSpin();
+  const enabled = useSettings().data?.spin_enabled ?? true;
   const [degrees, setDegrees] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const [result, setResult] = useState<{ label: string; won: boolean } | null>(null);
@@ -60,6 +61,16 @@ export default function SpinScreen() {
       },
     });
   };
+
+  if (!enabled && !spinning) {
+    return (
+      <Screen stack>
+        <BackLink label="Home" />
+        <Title>Spin to Win</Title>
+        <Notice>Spin to Win is turned off right now.</Notice>
+      </Screen>
+    );
+  }
 
   return (
     <Screen stack>

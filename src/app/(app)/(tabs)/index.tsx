@@ -2,10 +2,12 @@ import { router } from 'expo-router';
 import { useRef, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
+import { BellConfetti, BellRings } from '@/components/sb/bell-celebration';
 import { BellIcon } from '@/components/sb/bell-icon';
+import { LatestSale } from '@/components/sb/latest-sale';
 import { SpinGlyph } from '@/components/sb/spin-wheel';
 import { Avatar, Card, Notice, SBText, Screen } from '@/components/sb/ui';
-import { useLeaderboard, useProducts, useRingSale, useSettings, useSpinStatus, useUndoSale } from '@/lib/api';
+import { useLeaderboard, useMyInvites, useProducts, useRingSale, useSettings, useSpinStatus, useUndoSale } from '@/lib/api';
 import type { Tables } from '@/lib/database.types';
 import { firstName, fmt, ptsLabel, spinsLabel } from '@/lib/salesbell';
 import { errorMessage } from '@/lib/supabase';
@@ -25,10 +27,13 @@ export default function HomeScreen() {
   const spin = useSpinStatus();
   const ringSale = useRingSale();
   const undoSale = useUndoSale();
+  const invite = useMyInvites(userId).data?.[0];
 
   const [selId, setSelId] = useState<number | null>(null);
   const [qty, setQty] = useState(1);
   const [ringKey, setRingKey] = useState(0);
+  // Reaching the daily goal gets the bigger celebration.
+  const [bigRing, setBigRing] = useState(false);
   const ringing = useRef(false);
 
   const visible = (products.data ?? []).filter((p) => p.visible);
@@ -42,6 +47,7 @@ export default function HomeScreen() {
   const sold = mine?.sales ?? 0;
   const left = Math.max(0, goal - sold);
   const pct = Math.min(100, Math.round((sold / goal) * 100));
+  const spinOn = settings.data?.spin_enabled ?? true;
   const avail = spin.data?.available ?? 0;
   const every = spin.data?.spin_every ?? settings.data?.spin_every ?? 5;
   const need = every - (sold % every);
@@ -66,11 +72,12 @@ export default function HomeScreen() {
       { productId: product.id, qty: n },
       {
         onSuccess: (sale) => {
-          s.playBell();
-          setRingKey((k) => k + 1);
-          setQty(1);
           const after = before + n;
           const reached = before < goal && after >= goal;
+          s.playBell();
+          setBigRing(reached);
+          setRingKey((k) => k + 1);
+          setQty(1);
           s.toast(reached ? 'Goal reached!' : 'Ding! Sale registered', reached ? `${label} · ${after} of ${goal} today` : label, {
             duration: 5000,
             action: { label: 'Undo', onPress: () => undo(sale.id, label) },
@@ -117,23 +124,25 @@ export default function HomeScreen() {
           </View>
         </Pressable>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Pressable
-            onPress={() => router.push('/spin')}
-            style={{
-              height: 50,
-              paddingHorizontal: avail > 0 ? 14 : 12,
-              borderRadius: 14,
-              backgroundColor: avail > 0 ? c.ink : c.card,
-              boxShadow: avail > 0 ? undefined : c.shadow,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
-            }}>
-            <SpinGlyph color={avail > 0 ? c.acc : c.faint} />
-            <SBText w={avail > 0 ? 800 : 600} size={avail > 0 ? 14 : 13} color={avail > 0 ? c.bg : c.mut}>
-              {avail > 0 ? spinsLabel(avail) : 'Spin in ' + need}
-            </SBText>
-          </Pressable>
+          {spinOn ? (
+            <Pressable
+              onPress={() => router.push('/spin')}
+              style={{
+                height: 50,
+                paddingHorizontal: avail > 0 ? 14 : 12,
+                borderRadius: 14,
+                backgroundColor: avail > 0 ? c.ink : c.card,
+                boxShadow: avail > 0 ? undefined : c.shadow,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+              }}>
+              <SpinGlyph color={avail > 0 ? c.acc : c.faint} />
+              <SBText w={avail > 0 ? 800 : 600} size={avail > 0 ? 14 : 13} color={avail > 0 ? c.bg : c.mut}>
+                {avail > 0 ? spinsLabel(avail) : 'Spin in ' + need}
+              </SBText>
+            </Pressable>
+          ) : null}
           <Card onPress={() => router.navigate('/board')} style={{ borderRadius: 14, paddingVertical: 6, paddingHorizontal: 14, alignItems: 'center' }}>
             <SBText w={600} size={12} color={c.mut}>
               Rank
@@ -145,7 +154,28 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      <Card style={{ borderRadius: 24, paddingTop: 18, paddingHorizontal: 20, paddingBottom: 20, gap: 12 }}>
+      {invite ? (
+        <Card
+          onPress={() => router.push('/groups')}
+          style={{ borderRadius: 18, paddingVertical: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <SBText size={15} style={{ flex: 1 }} numberOfLines={2}>
+            <SBText w={700} size={15}>
+              {firstName(invite.inviter?.full_name ?? '')}
+            </SBText>
+            {' invited you to '}
+            <SBText w={700} size={15}>
+              {invite.group?.name}
+            </SBText>
+          </SBText>
+          <SBText w={700} color={c.accText}>
+            View
+          </SBText>
+        </Card>
+      ) : null}
+
+      <LatestSale />
+
+      <Card style={{ borderRadius: 20, paddingVertical: 14, paddingHorizontal: 16, gap: 8 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <SBText w={500} size={14} color={c.mut}>
             Sales today
@@ -155,23 +185,23 @@ export default function HomeScreen() {
           </SBText>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-          <SBText w={800} size={104} ls={-0.05} style={{ lineHeight: 100 }}>
+          <SBText w={800} size={34} ls={-0.02} style={{ lineHeight: 38 }}>
             {sold}
           </SBText>
-          <SBText w={700} size={36} ls={-0.02} color={c.faint}>
+          <SBText w={700} size={18} color={c.faint}>
             /{goal}
           </SBText>
         </View>
         <View style={{ flexDirection: 'row', gap: 4 }}>
           {Array.from({ length: goal }, (_, i) => (
-            <View key={i} style={{ flex: 1, height: 10, borderRadius: 5, backgroundColor: i < sold ? c.acc : c.el }} />
+            <View key={i} style={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: i < sold ? c.acc : c.el }} />
           ))}
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
-          <SBText w={600} size={15} color={c.accText} style={{ flexShrink: 1 }}>
+          <SBText w={600} size={14} color={c.accText} style={{ flexShrink: 1 }}>
             {left === 0 ? 'Goal reached — keep ringing!' : `${pct}% – only ${left} sale${left > 1 ? 's' : ''} to go!`}
           </SBText>
-          <SBText w={600} size={15}>
+          <SBText w={600} size={14}>
             {fmt(mine?.revenue ?? 0)}
           </SBText>
         </View>
@@ -214,7 +244,7 @@ export default function HomeScreen() {
         </ScrollView>
       )}
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 'auto' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 'auto', marginBottom: 12 }}>
         <View style={{ alignItems: 'center', gap: 6 }}>
           <Pressable onPress={() => setQty((q) => Math.min(9, q + 1))} style={stepStyle} accessibilityLabel="Increase quantity">
             <SBText w={600} size={24}>
@@ -231,28 +261,32 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        <Pressable
-          onPress={() => ring()}
-          disabled={!p || ringSale.isPending}
-          accessibilityRole="button"
-          accessibilityLabel="Ring the bell"
-          style={({ pressed }) => ({
-            width: 180,
-            height: 180,
-            borderRadius: 90,
-            backgroundColor: c.acc,
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 10,
-            opacity: !p ? 0.5 : ringSale.isPending ? 0.75 : 1,
-            boxShadow: c.bellShadow,
-            transform: [{ scale: pressed ? 0.96 : 1 }],
-          })}>
-          <BellIcon color={c.accInk} ringKey={ringKey} />
-          <SBText w={800} size={18} color={c.accInk}>
-            {ringSale.isPending ? 'Ringing…' : 'Ring the bell'}
-          </SBText>
-        </Pressable>
+        <View style={{ width: 180, height: 180, alignItems: 'center', justifyContent: 'center' }}>
+          <BellRings burst={ringKey} big={bigRing} size={180} color={c.acc} />
+          <Pressable
+            onPress={() => ring()}
+            disabled={!p || ringSale.isPending}
+            accessibilityRole="button"
+            accessibilityLabel="Ring the bell"
+            style={({ pressed }) => ({
+              width: 180,
+              height: 180,
+              borderRadius: 90,
+              backgroundColor: c.acc,
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+              opacity: !p ? 0.5 : ringSale.isPending ? 0.75 : 1,
+              boxShadow: c.bellShadow,
+              transform: [{ scale: pressed ? 0.96 : 1 }],
+            })}>
+            <BellIcon color={c.accInk} ringKey={ringKey} />
+            <SBText w={800} size={18} color={c.accInk}>
+              {ringSale.isPending ? 'Ringing…' : 'Ring the bell'}
+            </SBText>
+          </Pressable>
+          <BellConfetti burst={ringKey} big={bigRing} size={180} color={c.acc} />
+        </View>
 
         <View style={{ width: 56, alignItems: 'center', gap: 2 }}>
           <SBText w={800} size={22} color={c.accText}>
@@ -265,7 +299,7 @@ export default function HomeScreen() {
       </View>
 
       {p ? (
-        <SBText size={14} color={c.mut} style={{ textAlign: 'center', marginTop: -4 }}>
+        <SBText size={14} color={c.mut} style={{ textAlign: 'center' }}>
           {p.name} × {qty} ·{' '}
           <SBText w={600} size={14}>
             {fmt(p.price * qty)}

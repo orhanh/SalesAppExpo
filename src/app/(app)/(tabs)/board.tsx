@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { GroupScope, useGroupScope } from '@/components/sb/group-scope';
 import { Avatar, Card, Chips, Notice, SBText, Screen, Segmented } from '@/components/sb/ui';
 import { useLeaderboard } from '@/lib/api';
 import { PERIODS, firstName, fmt, type LeaderRow, type Metric, type Period } from '@/lib/salesbell';
@@ -50,7 +51,8 @@ export default function BoardScreen() {
   const { c, userId } = useSalesBell();
   const [period, setPeriod] = useState<Period>('d');
   const [metric, setMetric] = useState<Metric>('sales');
-  const board = useLeaderboard(period);
+  const scope = useGroupScope();
+  const board = useLeaderboard(period, scope.group?.id);
 
   const rows: Row[] = [...(board.data ?? [])]
     .sort((a, b) => b[metric] - a[metric] || (a.user_id === userId ? -1 : b.user_id === userId ? 1 : 0))
@@ -67,6 +69,7 @@ export default function BoardScreen() {
       <SBText w={800} size={30} ls={-0.02}>
         Leaderboard
       </SBText>
+      <GroupScope groups={scope.groups} group={scope.group} onChange={scope.setGroup} />
       <Segmented options={PERIODS} value={period} onChange={setPeriod} />
       <Chips
         options={[

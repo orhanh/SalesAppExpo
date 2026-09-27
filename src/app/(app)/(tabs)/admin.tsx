@@ -24,7 +24,6 @@ import {
   useRequests,
   useSettings,
   useSpinFields,
-  useTeams,
 } from '@/lib/api';
 import { PERIODS, fmt, type Period } from '@/lib/salesbell';
 import { useSalesBell } from '@/store/salesbell-store';
@@ -68,7 +67,7 @@ export default function AdminScreen() {
   const productSales = useProductSales(period).data ?? [];
   const products = useProducts().data ?? [];
   const profiles = useProfiles().data ?? [];
-  const teams = useTeams().data ?? [];
+  const teamCount = new Set(profiles.map((u) => u.team_id).filter((id) => id !== null)).size;
   const pending = useRequests().data?.length ?? 0;
   const auditCount = useAudit().data?.length;
   const settings = useSettings().data;
@@ -90,11 +89,14 @@ export default function AdminScreen() {
 
   const manage: { label: string; sub: string; href?: Href; onPress?: () => void; badge?: number }[] = [
     { label: 'Products', sub: products.filter((p) => p.visible).length + ' visible to sellers', href: '/admin/products' },
-    { label: 'Users & teams', sub: `${profiles.length} users · ${teams.length} teams`, href: '/admin/users' },
+    { label: 'Users & teams', sub: `${profiles.length} users · ${teamCount} teams`, href: '/admin/users' },
     { label: 'Create contest', sub: 'Sales, revenue, product, first to X, lottery', href: '/admin/new-contest' },
     {
       label: 'Spin to Win wheel',
-      sub: `${fields.length} fields · 1 spin per ${settings?.spin_every ?? '–'} sales`,
+      sub:
+        settings?.spin_enabled === false
+          ? 'Turned off'
+          : `${fields.length} fields · 1 spin per ${settings?.spin_every ?? '–'} sales`,
       href: '/admin/spin',
     },
     {

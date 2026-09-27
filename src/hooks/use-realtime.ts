@@ -2,10 +2,10 @@ import { focusManager, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
 
-import { invalidateSales } from '@/lib/api';
+import { invalidateGroups, invalidateSales } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 
-/** Keeps leaderboards, contests and the feed live while signed in. */
+/** Keeps leaderboards, contests, the feed and group invites live while signed in. */
 export function useRealtime(userId: string | undefined) {
   const client = useQueryClient();
 
@@ -17,6 +17,9 @@ export function useRealtime(userId: string | undefined) {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'feed_events' }, () =>
         client.invalidateQueries({ queryKey: ['feed'] }),
       )
+      // RLS limits these to the user's own invites and groups.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'group_invites' }, () => invalidateGroups(client))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'group_members' }, () => invalidateGroups(client))
       .subscribe();
     return () => {
       supabase.removeChannel(channel);

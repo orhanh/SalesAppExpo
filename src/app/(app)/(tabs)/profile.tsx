@@ -11,10 +11,11 @@ import {
   SBText,
   Screen,
   StatTile,
+  Tag,
   Toggle,
 } from '@/components/sb/ui';
 import { useContestList } from '@/hooks/use-contest-list';
-import { useLeaderboard, useMyStats } from '@/lib/api';
+import { useLeaderboard, useMyGroups, useMyInvites, useMyStats } from '@/lib/api';
 import { dayLabel, fmt, parseDate } from '@/lib/salesbell';
 import { useSalesBell } from '@/store/salesbell-store';
 
@@ -24,6 +25,8 @@ export default function ProfileScreen() {
   const stats = useMyStats().data;
   const today = useLeaderboard('d').data;
   const contests = useContestList().data;
+  const groupCount = useMyGroups(userId).data?.length ?? 0;
+  const inviteCount = useMyInvites(userId).data?.length ?? 0;
 
   const rank =
     today && userId
@@ -117,6 +120,28 @@ export default function ProfileScreen() {
       ) : null}
 
       <ListCard>
+        <ListRow onPress={() => router.push('/team')} style={{ height: 54 }}>
+          <SBText w={600} size={16} style={{ flex: 1 }}>
+            Team
+          </SBText>
+          <SBText size={15} color={c.mut} numberOfLines={1} style={{ flexShrink: 1 }}>
+            {profile?.team?.name}
+          </SBText>
+          <Chevron />
+        </ListRow>
+        <ListRow onPress={() => router.push('/groups')} style={{ height: 54 }}>
+          <SBText w={600} size={16} style={{ flex: 1 }}>
+            Sales groups
+          </SBText>
+          {inviteCount ? (
+            <Tag tone="acc">{inviteCount === 1 ? '1 invite' : `${inviteCount} invites`}</Tag>
+          ) : groupCount ? (
+            <SBText size={15} color={c.mut}>
+              {groupCount}
+            </SBText>
+          ) : null}
+          <Chevron />
+        </ListRow>
         <ListRow last onPress={() => router.push('/history')} style={{ height: 54, justifyContent: 'space-between' }}>
           <SBText w={600} size={16}>
             Sales history

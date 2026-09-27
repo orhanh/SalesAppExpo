@@ -149,10 +149,119 @@ export type Database = {
           },
         ]
       }
+      group_invites: {
+        Row: {
+          created_at: string
+          group_id: number
+          id: number
+          invited_by: string
+          invitee_id: string
+        }
+        Insert: {
+          created_at?: string
+          group_id: number
+          id?: never
+          invited_by: string
+          invitee_id: string
+        }
+        Update: {
+          created_at?: string
+          group_id?: number
+          id?: never
+          invited_by?: string
+          invitee_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_invites_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_invites_invited_by_fkey"
+            columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_invites_invitee_id_fkey"
+            columns: ["invitee_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_members: {
+        Row: {
+          group_id: number
+          joined_at: string
+          user_id: string
+        }
+        Insert: {
+          group_id: number
+          joined_at?: string
+          user_id: string
+        }
+        Update: {
+          group_id?: number
+          joined_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_members_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      groups: {
+        Row: {
+          created_at: string
+          id: number
+          name: string
+          owner_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          name: string
+          owner_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          name?: string
+          owner_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "groups_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           category: string
           created_at: string
+          deleted_at: string | null
           id: number
           name: string
           points: number
@@ -162,6 +271,7 @@ export type Database = {
         Insert: {
           category?: string
           created_at?: string
+          deleted_at?: string | null
           id?: never
           name: string
           points?: number
@@ -171,6 +281,7 @@ export type Database = {
         Update: {
           category?: string
           created_at?: string
+          deleted_at?: string | null
           id?: never
           name?: string
           points?: number
@@ -285,16 +396,19 @@ export type Database = {
         Row: {
           daily_goal: number
           id: boolean
+          spin_enabled: boolean
           spin_every: number
         }
         Insert: {
           daily_goal?: number
           id?: boolean
+          spin_enabled?: boolean
           spin_every?: number
         }
         Update: {
           daily_goal?: number
           id?: boolean
+          spin_enabled?: boolean
           spin_every?: number
         }
         Relationships: []
@@ -367,24 +481,42 @@ export type Database = {
       }
       teams: {
         Row: {
+          code: string
+          created_at: string
+          created_by: string | null
           id: number
           name: string
         }
         Insert: {
+          code: string
+          created_at?: string
+          created_by?: string | null
           id?: never
           name: string
         }
         Update: {
+          code?: string
+          created_at?: string
+          created_by?: string | null
           id?: never
           name?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "teams_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      can_manage_group: { Args: { p_group_id: number }; Returns: boolean }
       contest_standings: {
         Args: never
         Returns: {
@@ -394,8 +526,22 @@ export type Database = {
           value: number
         }[]
       }
+      create_group: { Args: { p_name: string }; Returns: number }
+      create_team: {
+        Args: { p_name: string }
+        Returns: {
+          code: string
+          id: number
+        }[]
+      }
+      delete_group: { Args: { p_group_id: number }; Returns: undefined }
+      delete_product: { Args: { p_product_id: number }; Returns: string }
+      invite_to_group: {
+        Args: { p_group_id: number; p_user_id: string }
+        Returns: undefined
+      }
       leaderboard: {
-        Args: { p_period?: string }
+        Args: { p_group_id?: number; p_period?: string }
         Returns: {
           full_name: string
           points: number
@@ -403,6 +549,18 @@ export type Database = {
           sales: number
           team: string
           user_id: string
+        }[]
+      }
+      join_team: { Args: { p_code: string }; Returns: undefined }
+      leave_group: { Args: { p_group_id: number }; Returns: undefined }
+      my_team: {
+        Args: never
+        Returns: {
+          code: string
+          created_by: string
+          id: number
+          members: number
+          name: string
         }[]
       }
       my_stats: { Args: never; Returns: Json }
@@ -414,6 +572,20 @@ export type Database = {
           units: number
         }[]
       }
+      regenerate_team_code: { Args: never; Returns: string }
+      remove_member: {
+        Args: { p_group_id: number; p_user_id: string }
+        Returns: undefined
+      }
+      rename_group: {
+        Args: { p_group_id: number; p_name: string }
+        Returns: undefined
+      }
+      respond_to_invite: {
+        Args: { p_accept: boolean; p_invite_id: number }
+        Returns: undefined
+      }
+      set_my_name: { Args: { p_name: string }; Returns: undefined }
       spin_status: {
         Args: never
         Returns: {
@@ -429,6 +601,14 @@ export type Database = {
           label: string
           slot: number
           won: boolean
+        }[]
+      }
+      team_name_taken: { Args: { p_name: string }; Returns: boolean }
+      team_preview: {
+        Args: { p_code: string }
+        Returns: {
+          members: number
+          name: string
         }[]
       }
       undo_sale: { Args: { p_sale_id: number }; Returns: undefined }

@@ -1,4 +1,4 @@
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import {
   BackLink,
@@ -11,8 +11,9 @@ import {
   SectionLabel,
   StepButton,
   Title,
+  Toggle,
 } from '@/components/sb/ui';
-import { useSetProbability, useSetSpinEvery, useSettings, useSpinFields } from '@/lib/api';
+import { useSetProbability, useSetSpinEnabled, useSetSpinEvery, useSettings, useSpinFields } from '@/lib/api';
 import { errorMessage } from '@/lib/supabase';
 import { useSalesBell } from '@/store/salesbell-store';
 
@@ -22,6 +23,8 @@ export default function SpinConfigScreen() {
   const fields = useSpinFields();
   const setEvery = useSetSpinEvery();
   const setProb = useSetProbability();
+  const setEnabled = useSetSpinEnabled();
+  const enabled = settings.data?.spin_enabled ?? true;
 
   const every = settings.data?.spin_every ?? 5;
   const wheel = fields.data ?? [];
@@ -42,6 +45,28 @@ export default function SpinConfigScreen() {
     <Screen stack>
       <BackLink label="Admin" />
       <Title>Spin to Win wheel</Title>
+      <Card>
+        <Pressable
+          onPress={() =>
+            setEnabled.mutate(!enabled, {
+              onSuccess: () => toast(enabled ? 'Spin to Win turned off' : 'Spin to Win turned on', ''),
+              onError,
+            })
+          }
+          accessibilityRole="switch"
+          accessibilityState={{ checked: enabled }}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 16 }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <SBText w={700}>Spin to Win</SBText>
+            <SBText size={13} color={c.mut} lh={1.35}>
+              {enabled
+                ? 'Sellers earn spins and can spin the wheel.'
+                : 'Hidden from sellers. Turning it back on restores spins earned today.'}
+            </SBText>
+          </View>
+          <Toggle on={enabled} />
+        </Pressable>
+      </Card>
       <Card
         style={{
           flexDirection: 'row',
